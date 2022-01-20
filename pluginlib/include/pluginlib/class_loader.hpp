@@ -340,6 +340,8 @@ private:
    */
   int unloadClassLibraryInternal(const std::string & library_path);
 
+  std::string find_package_path(const std::string & package_name);
+
 private:
   std::vector<std::string> plugin_xml_paths_;
   // Map from library to class's descriptions described in XML.
@@ -348,6 +350,8 @@ private:
   std::string base_class_;
   std::string attrib_name_;
   class_loader::MultiLibraryClassLoader lowlevel_class_loader_;  // The underlying classloader
+  bool has_ament_env_;
+  std::string alternate_prefix_path_;
 };
 
 }  // namespace pluginlib

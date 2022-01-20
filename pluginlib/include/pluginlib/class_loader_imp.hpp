@@ -71,9 +71,11 @@
 #include "rcpputils/filesystem_helper.hpp"
 #include "rcpputils/shared_library.hpp"
 #include "rcutils/logging_macros.h"
+#include <rcpputils/find_library.hpp>
 
 #include "./class_loader.hpp"
 #include "./impl/split.hpp"
+#include "rcutils/filesystem.h"
 
 #ifdef _WIN32
 #define CLASS_LOADER_IMPL_OS_PATHSEP ";"
@@ -103,11 +105,23 @@ ClassLoader<T>::ClassLoader(
 {
   RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader", "Creating ClassLoader, base = %s, address = %p",
     base_class.c_str(), static_cast<void *>(this));
-  try {
-    ament_index_cpp::get_package_prefix(package_);
-  } catch (const ament_index_cpp::PackageNotFoundError & exception) {
-    // rethrow as class loader exception, package name is in the error message already.
-    throw pluginlib::ClassLoaderException(exception.what());
+
+  if (std::getenv("AMENT_PREFIX_PATH") == NULL)
+  {
+    has_ament_env_ = false;
+    alternate_prefix_path_ = "/opt/irobot/cleantrack";
+  } else {
+    has_ament_env_ = true;
+  }
+
+  if (has_ament_env_)
+  {
+    try {
+      ament_index_cpp::get_package_prefix(package_);
+    } catch (const ament_index_cpp::PackageNotFoundError & exception) {
+      // rethrow as class loader exception, package name is in the error message already.
+      throw pluginlib::ClassLoaderException(exception.what());
+    }
   }
 
   if (0 == plugin_xml_paths_.size()) {
@@ -237,6 +251,22 @@ T * ClassLoader<T>::createUnmanagedInstance(const std::string & lookup_name)
 }
 
 template<class T>
+std::string ClassLoader<T>::find_package_path(const std::string & package_name)
+{
+  std::vector<std::string> search_paths;
+  search_paths.push_back(alternate_prefix_path_);
+
+  for (const auto & search_path : search_paths) {
+    auto path = rcpputils::fs::path(search_path);
+    path = path / "config" / package_name;
+    if (rcutils_is_directory(path.string().c_str())) {
+      return path.string();
+    }
+  }
+  return "";
+}
+
+template<class T>
 std::vector<std::string> ClassLoader<T>::getPluginXmlPaths(
   const std::string & package,
   const std::string & attrib_name)
@@ -244,6 +274,7 @@ std::vector<std::string> ClassLoader<T>::getPluginXmlPaths(
 {
   // Pull possible files from manifests of packages which depend on this package and export class
   std::vector<std::string> paths;
+  if (has_ament_env_)
   {
     // the convention is to create an ament resource which a concatenation of
     // the package name, "pluginlib", and the attribute being exported
@@ -278,6 +309,34 @@ std::vector<std::string> ClassLoader<T>::getPluginXmlPaths(
       }
     }
   }
+
+  (void)attrib_name;
+  auto path = find_package_path(package);
+
+  rcutils_allocator_t allocator = rcutils_get_default_allocator();
+  auto iter = rcutils_dir_iter_start(path.c_str(), allocator);
+
+  if (iter == NULL)
+  {
+    rcutils_dir_iter_end(iter);
+    rcutils_reset_error();
+    return paths;
+  }
+
+  bool entries_left = true;
+  while (entries_left)
+  {
+    auto p = rcpputils::fs::path(std::string(iter->entry_name));
+    if (p.extension().string() == ".xml")
+    {
+      auto fp = path + "/" + iter->entry_name;
+      paths.push_back(fp);
+    }
+    entries_left = rcutils_dir_iter_next(iter);
+  }
+
+  rcutils_dir_iter_end(iter);
+
   return paths;
 }
 
@@ -385,7 +444,15 @@ std::vector<std::string> ClassLoader<T>::getAllLibraryPathsToTry(
 
   std::vector<std::string> all_paths;  // result of all pairs to search
 
-  std::string package_prefix = ament_index_cpp::get_package_prefix(exporting_package_name);
+  std::string package_prefix;
+
+  if (has_ament_env_)
+  {
+    package_prefix = ament_index_cpp::get_package_prefix(exporting_package_name);
+  } else {
+    (void)exporting_package_name;
+    package_prefix = alternate_prefix_path_;
+  }
 
   // Setup the directories to look in.
   std::vector<std::string> all_search_paths = {
@@ -498,6 +565,7 @@ std::string ClassLoader<T>::getClassLibraryPath(const std::string & lookup_name)
   }
   ClassMapIterator it = classes_available_.find(lookup_name);
   std::string library_name = it->second.library_name_;
+
   RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
     "Class %s maps to library %s in classes_available_.",
     lookup_name.c_str(), library_name.c_str());
@@ -739,7 +807,14 @@ void ClassLoader<T>::processSingleXMLPluginFile(
       continue;
     }
 
-    std::string package_name = getPackageFromPluginXMLFilePath(xml_file);
+    std::string package_name;
+    if (has_ament_env_)
+    {
+      package_name = getPackageFromPluginXMLFilePath(xml_file);
+    } else {
+      package_name = package_;
+    }
+
     if ("" == package_name) {
       RCUTILS_LOG_ERROR_NAMED("pluginlib.ClassLoader",
         "Could not find package manifest (neither package.xml or deprecated "
