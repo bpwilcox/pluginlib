@@ -77,6 +77,10 @@
 #include "./impl/split.hpp"
 #include "rcutils/filesystem.h"
 
+#include <libgen.h>         // dirname
+#include <unistd.h>         // readlink
+#include <linux/limits.h>   // PATH_MAX
+
 #ifdef _WIN32
 #define CLASS_LOADER_IMPL_OS_PATHSEP ";"
 #else
@@ -109,7 +113,14 @@ ClassLoader<T>::ClassLoader(
   if (std::getenv("AMENT_PREFIX_PATH") == NULL)
   {
     has_ament_env_ = false;
-    alternate_prefix_path_ = "/opt/irobot/cleantrack";
+    char result[PATH_MAX];
+    ssize_t count = readlink("/proc/self/exe", result, PATH_MAX);
+    const char *exec_path;
+    if (count != -1) {
+        exec_path = dirname(result);
+        auto path = rcpputils::fs::path(exec_path).parent_path();
+        alternate_prefix_path_ = path.string();
+    }
   } else {
     has_ament_env_ = true;
   }
@@ -253,12 +264,13 @@ T * ClassLoader<T>::createUnmanagedInstance(const std::string & lookup_name)
 template<class T>
 std::string ClassLoader<T>::find_package_path(const std::string & package_name)
 {
+  (void)package_name;
   std::vector<std::string> search_paths;
   search_paths.push_back(alternate_prefix_path_);
 
   for (const auto & search_path : search_paths) {
     auto path = rcpputils::fs::path(search_path);
-    path = path / "config" / package_name;
+    path = path / "share";
     if (rcutils_is_directory(path.string().c_str())) {
       return path.string();
     }
