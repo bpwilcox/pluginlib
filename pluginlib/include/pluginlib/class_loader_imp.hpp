@@ -873,6 +873,16 @@ int ClassLoader<T>::unloadClassLibraryInternal(const std::string & library_path)
   return lowlevel_class_loader_.unloadLibrary(library_path);
 }
 
+template<class T>
+void ClassLoader<T>::register_plugin(
+  const std::string & lookup_name, const std::string & derived_class,
+  const std::string & base_class, const std::string & library)
+{
+  classes_available_.insert(std::pair<std::string, ClassDesc>(lookup_name,
+    ClassDesc(lookup_name, derived_class, base_class, package_, "",
+    library, "")));
+}
+
 }  // namespace pluginlib
 
 #endif  // PLUGINLIB__CLASS_LOADER_IMP_HPP_

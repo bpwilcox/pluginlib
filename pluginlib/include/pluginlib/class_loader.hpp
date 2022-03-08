@@ -264,6 +264,12 @@ public:
    */
   virtual int unloadLibraryForClass(const std::string & lookup_name);
 
+  void register_plugin(
+    const std::string & lookup_name,
+    const std::string & derived_class,
+    const std::string & base_class,
+    const std::string & library);
+
 private:
   /// Return the paths to plugin.xml files.
   /**
