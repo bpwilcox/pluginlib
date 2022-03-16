@@ -27,6 +27,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+// This file has been copied and modified by iRobot.
+// Copyright 2022 iRobot Corporation. All Rights Reserved.
+
 #ifndef PLUGINLIB__CLASS_LOADER_HPP_
 #define PLUGINLIB__CLASS_LOADER_HPP_
 
