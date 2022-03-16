@@ -351,7 +351,6 @@ private:
   std::string attrib_name_;
   class_loader::MultiLibraryClassLoader lowlevel_class_loader_;  // The underlying classloader
   bool has_ament_env_;
-  std::string alternate_prefix_path_;
 };
 
 }  // namespace pluginlib

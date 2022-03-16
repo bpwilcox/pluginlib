@@ -100,18 +100,19 @@ ClassLoader<T>::ClassLoader(
   // loading/unloading.
   // Leaving it off for now... libraries will be loaded immediately and won't
   // be unloaded until class loader is destroyed or force unload.
-  lowlevel_class_loader_(false)
+  lowlevel_class_loader_(false),
+  has_ament_env_(false)
   /***************************************************************************/
 {
   RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader", "Creating ClassLoader, base = %s, address = %p",
     base_class.c_str(), static_cast<void *>(this));
 
-  if (std::getenv("AMENT_PREFIX_PATH") == NULL)
+  if (std::getenv("AMENT_PREFIX_PATH"))
   {
-    has_ament_env_ = false;
-    alternate_prefix_path_ = "/opt/irobot/cleantrack";
-  } else {
     has_ament_env_ = true;
+  } else if (!std::getenv("BREWST_PLUGINLIB_PREFIX_PATH")) {
+    throw pluginlib::ClassLoaderException(
+            "Environment variables AMENT_PREFIX_PATH or BREWST_PLUGINLIB_PREFIX_PATH not set.");
   }
 
   if (has_ament_env_)
@@ -253,12 +254,16 @@ T * ClassLoader<T>::createUnmanagedInstance(const std::string & lookup_name)
 template<class T>
 std::string ClassLoader<T>::find_package_path(const std::string & package_name)
 {
-  std::vector<std::string> search_paths;
-  search_paths.push_back(alternate_prefix_path_);
+  std::string search_path = std::getenv("BREWST_PLUGINLIB_PREFIX_PATH");
+  std::vector<std::string> search_paths = pluginlib::impl::split(search_path, CLASS_LOADER_IMPL_OS_PATHSEP);
 
   for (const auto & search_path : search_paths) {
     auto path = rcpputils::fs::path(search_path);
-    path = path / "config" / package_name;
+    auto last = path.filename().string();
+    if (last.compare("lib") == 0) {
+      path = path.parent_path();
+    }
+    path = path / "config" / "plugins"/ package_name;
     if (rcutils_is_directory(path.string().c_str())) {
       return path.string();
     }
@@ -445,25 +450,34 @@ std::vector<std::string> ClassLoader<T>::getAllLibraryPathsToTry(
   std::vector<std::string> all_paths;  // result of all pairs to search
 
   std::string package_prefix;
+  std::vector<std::string> all_search_paths;
 
   if (has_ament_env_)
   {
     package_prefix = ament_index_cpp::get_package_prefix(exporting_package_name);
+    // Setup the directories to look in.
+    all_search_paths = {
+      // for now just try lib and lib64 (and their respective "libexec" directories)
+      package_prefix + path_separator + "lib",
+      package_prefix + path_separator + "lib64",
+      package_prefix + path_separator + "bin",  // also look in bin, for dll's on Windows
+      package_prefix + path_separator + "lib" + path_separator + exporting_package_name,
+      package_prefix + path_separator + "lib64" + path_separator + exporting_package_name,
+      package_prefix + path_separator + "bin" + path_separator + exporting_package_name,
+    };
   } else {
     (void)exporting_package_name;
-    package_prefix = alternate_prefix_path_;
+    std::string search_path = std::getenv("BREWST_PLUGINLIB_PREFIX_PATH");
+    all_search_paths = pluginlib::impl::split(search_path, CLASS_LOADER_IMPL_OS_PATHSEP);
+    for (auto & path : all_search_paths)
+    {
+      std::size_t found = path.find_last_of("/\\");
+      auto last = path.substr(found + 1);
+      if (last.compare("lib") != 0) {
+        path = path + path_separator + "lib";
+      }
+    }
   }
-
-  // Setup the directories to look in.
-  std::vector<std::string> all_search_paths = {
-    // for now just try lib and lib64 (and their respective "libexec" directories)
-    package_prefix + path_separator + "lib",
-    package_prefix + path_separator + "lib64",
-    package_prefix + path_separator + "bin",  // also look in bin, for dll's on Windows
-    package_prefix + path_separator + "lib" + path_separator + exporting_package_name,
-    package_prefix + path_separator + "lib64" + path_separator + exporting_package_name,
-    package_prefix + path_separator + "bin" + path_separator + exporting_package_name,
-  };
 
   std::string stripped_library_name = stripAllButFileFromPath(library_name);
 
