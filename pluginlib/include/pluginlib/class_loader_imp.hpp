@@ -261,14 +261,17 @@ std::string ClassLoader<T>::find_package_path(const std::string & package_name)
   std::vector<std::string> search_paths = pluginlib::impl::split(search_path, CLASS_LOADER_IMPL_OS_PATHSEP);
 
   for (const auto & search_path : search_paths) {
-    auto path = rcpputils::fs::path(search_path);
-    auto last = path.filename().string();
+    auto prefix = rcpputils::fs::path(search_path);
+    auto last = prefix.filename().string();
     if (last.compare("lib") == 0) {
-      path = path.parent_path();
+      prefix = prefix.parent_path();
     }
-    path = path / "config" / "plugins"/ package_name;
-    if (rcutils_is_directory(path.string().c_str())) {
-      return path.string();
+
+    for (const auto & data_dir : {"config", "share"}) {
+      auto path = prefix / data_dir / "plugins"/ package_name;
+      if (rcutils_is_directory(path.string().c_str())) {
+        return path.string();
+      }
     }
   }
   return "";
