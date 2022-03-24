@@ -475,12 +475,13 @@ std::vector<std::string> ClassLoader<T>::getAllLibraryPathsToTry(
     (void)exporting_package_name;
     std::string search_path = std::getenv("BREWST_PLUGINLIB_PREFIX_PATH");
     all_search_paths = pluginlib::impl::split(search_path, CLASS_LOADER_IMPL_OS_PATHSEP);
-    for (auto & path : all_search_paths)
+    for (auto & search_path : all_search_paths)
     {
-      std::size_t found = path.find_last_of("/\\");
-      auto last = path.substr(found + 1);
+      auto prefix = rcpputils::fs::path(search_path);
+      auto last = prefix.filename().string();
       if (last.compare("lib") != 0) {
-        path = path + path_separator + "lib";
+        auto path = prefix / "lib";
+        search_path = path.string();
       }
     }
   }
