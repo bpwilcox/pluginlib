@@ -458,34 +458,6 @@ std::vector<std::string> ClassLoader<T>::getAllLibraryPathsToTry(
   std::string package_prefix;
   std::vector<std::string> all_search_paths;
 
-  if (has_ament_env_)
-  {
-    package_prefix = ament_index_cpp::get_package_prefix(exporting_package_name);
-    // Setup the directories to look in.
-    all_search_paths = {
-      // for now just try lib and lib64 (and their respective "libexec" directories)
-      package_prefix + path_separator + "lib",
-      package_prefix + path_separator + "lib64",
-      package_prefix + path_separator + "bin",  // also look in bin, for dll's on Windows
-      package_prefix + path_separator + "lib" + path_separator + exporting_package_name,
-      package_prefix + path_separator + "lib64" + path_separator + exporting_package_name,
-      package_prefix + path_separator + "bin" + path_separator + exporting_package_name,
-    };
-  } else {
-    (void)exporting_package_name;
-    std::string search_path = std::getenv("BREWST_PLUGINLIB_PREFIX_PATH");
-    all_search_paths = pluginlib::impl::split(search_path, CLASS_LOADER_IMPL_OS_PATHSEP);
-    for (auto & search_path : all_search_paths)
-    {
-      auto prefix = rcpputils::fs::path(search_path);
-      auto last = prefix.filename().string();
-      if (last.compare("lib") != 0) {
-        auto path = prefix / "lib";
-        search_path = path.string();
-      }
-    }
-  }
-
   std::string stripped_library_name = stripAllButFileFromPath(library_name);
 
   std::string library_name_alternative;  // either lib<library> or <library> without lib prefix
@@ -501,38 +473,81 @@ std::vector<std::string> ClassLoader<T>::getAllLibraryPathsToTry(
   }
   std::string stripped_library_name_alternative = stripAllButFileFromPath(library_name_alternative);
 
-  try {
-    // Setup the relative file paths to pair with the search directories above.
-    std::vector<std::string> all_relative_library_paths = {
-      rcpputils::get_platform_library_name(library_name),
-      rcpputils::get_platform_library_name(library_name_alternative),
-      rcpputils::get_platform_library_name(stripped_library_name),
-      rcpputils::get_platform_library_name(stripped_library_name_alternative)
-    };
-    std::vector<std::string> all_relative_debug_library_paths = {
-      rcpputils::get_platform_library_name(library_name, true),
-      rcpputils::get_platform_library_name(library_name_alternative, true),
-      rcpputils::get_platform_library_name(stripped_library_name, true),
-      rcpputils::get_platform_library_name(stripped_library_name_alternative, true)
+  if (has_ament_env_)
+  {
+    package_prefix = ament_index_cpp::get_package_prefix(exporting_package_name);
+    // Setup the directories to look in.
+    all_search_paths = {
+      // for now just try lib and lib64 (and their respective "libexec" directories)
+      package_prefix + path_separator + "lib",
+      package_prefix + path_separator + "lib64",
+      package_prefix + path_separator + "bin",  // also look in bin, for dll's on Windows
+      package_prefix + path_separator + "lib" + path_separator + exporting_package_name,
+      package_prefix + path_separator + "lib64" + path_separator + exporting_package_name,
+      package_prefix + path_separator + "bin" + path_separator + exporting_package_name,
     };
 
-    for (auto && current_search_path : all_search_paths) {
-      for (auto && current_library_path : all_relative_library_paths) {
-        all_paths.push_back(current_search_path + path_separator + current_library_path);
+    try {
+      // Setup the relative file paths to pair with the search directories above.
+      std::vector<std::string> all_relative_library_paths = {
+        rcpputils::get_platform_library_name(library_name),
+        rcpputils::get_platform_library_name(library_name_alternative),
+        rcpputils::get_platform_library_name(stripped_library_name),
+        rcpputils::get_platform_library_name(stripped_library_name_alternative)
+      };
+      std::vector<std::string> all_relative_debug_library_paths = {
+        rcpputils::get_platform_library_name(library_name, true),
+        rcpputils::get_platform_library_name(library_name_alternative, true),
+        rcpputils::get_platform_library_name(stripped_library_name, true),
+        rcpputils::get_platform_library_name(stripped_library_name_alternative, true)
+      };
+
+      for (auto && current_search_path : all_search_paths) {
+        for (auto && current_library_path : all_relative_library_paths) {
+          all_paths.push_back(current_search_path + path_separator + current_library_path);
+        }
+        for (auto && current_library_path : all_relative_debug_library_paths) {
+          all_paths.push_back(current_search_path + path_separator + current_library_path);
+        }
       }
-      for (auto && current_library_path : all_relative_debug_library_paths) {
-        all_paths.push_back(current_search_path + path_separator + current_library_path);
+    } catch (const std::runtime_error & ex) {
+      throw std::runtime_error{ex.what()};
+    }
+    for (auto && path : all_paths) {
+      RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
+        "[search path for '%s']: '%s'",
+        library_name.c_str(),
+        path.c_str());
+    }
+  } else {
+    (void)exporting_package_name;
+    std::string search_path = std::getenv("BREWST_PLUGINLIB_PREFIX_PATH");
+    all_search_paths = pluginlib::impl::split(search_path, CLASS_LOADER_IMPL_OS_PATHSEP);
+    for (auto & search_path : all_search_paths)
+    {
+      auto prefix = rcpputils::fs::path(search_path);
+      auto last = prefix.filename().string();
+      if (last.compare("lib") != 0) {
+        auto path = prefix / "lib";
+        search_path = path.string();
       }
     }
-  } catch (const std::runtime_error & ex) {
-    throw std::runtime_error{ex.what()};
-  }
 
-  for (auto && path : all_paths) {
-    RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-      "[search path for '%s']: '%s'",
-      library_name.c_str(),
-      path.c_str());
+    std::vector<std::string> all_relative_library_paths = {
+      library_name,
+      library_name_alternative,
+      stripped_library_name,
+      stripped_library_name_alternative
+    };
+    for (auto && current_search_path : all_search_paths) {
+      for (auto && current_library_path : all_relative_library_paths) {
+        auto full_path = rcpputils::path_for_library(current_search_path, current_library_path);
+        if (!full_path.empty()) {
+          all_paths.push_back(full_path);
+          return all_paths;
+        }
+      }
+    }
   }
 
   return all_paths;
