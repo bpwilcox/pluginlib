@@ -191,8 +191,8 @@ std::shared_ptr<T> ClassLoader<T>::createSharedInstance(const std::string & look
 template<class T>
 UniquePtr<T> ClassLoader<T>::createUniqueInstance(const std::string & lookup_name)
 {
-  RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-    "Attempting to create managed (unique) instance for class %s.",
+  printf("pluginlib.ClassLoader: "
+    "Attempting to create managed (unique) instance for class %s.\n",
     lookup_name.c_str());
 
   if (!isClassLoaded(lookup_name)) {
@@ -201,20 +201,20 @@ UniquePtr<T> ClassLoader<T>::createUniqueInstance(const std::string & lookup_nam
 
   try {
     std::string class_type = getClassType(lookup_name);
-    RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader", "%s maps to real class type %s",
+    printf("pluginlib.ClassLoader: " "%s maps to real class type %s\n",
       lookup_name.c_str(), class_type.c_str());
 
     UniquePtr<T> obj = lowlevel_class_loader_.createUniqueInstance<T>(class_type);
 
-    RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-      "std::unique_ptr to object of real type %s created.",
+    printf("pluginlib.ClassLoader: "
+      "std::unique_ptr to object of real type %s created.\n",
       class_type.c_str());
 
     return obj;
   } catch (const class_loader::CreateClassException & ex) {
-    RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
+    printf("pluginlib.ClassLoader: "
       "Exception raised by low-level multi-library class loader when attempting "
-      "to create instance of class %s.",
+      "to create instance of class %s.\n",
       lookup_name.c_str());
     throw pluginlib::CreateClassException(ex.what());
   }
@@ -464,8 +464,8 @@ std::vector<std::string> ClassLoader<T>::getAllLibraryPathsToTry(
   const char * lib_prefix = "lib";
   if (library_name.rfind(lib_prefix, 0) == 0) {
     library_name_alternative = library_name.substr(strlen(lib_prefix));
-    RCUTILS_LOG_WARN_NAMED("pluginlib.ClassLoader",
-      "given plugin name '%s' should be '%s' for better portability",
+    printf("pluginlib.ClassLoader: "
+      "given plugin name '%s' should be '%s' for better portability\n",
       library_name.c_str(),
       library_name_alternative.c_str());
   } else {
@@ -514,8 +514,8 @@ std::vector<std::string> ClassLoader<T>::getAllLibraryPathsToTry(
       throw std::runtime_error{ex.what()};
     }
     for (auto && path : all_paths) {
-      RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-        "[search path for '%s']: '%s'",
+      printf("pluginlib.ClassLoader: "
+        "[search path for '%s']: '%s'\n",
         library_name.c_str(),
         path.c_str());
     }
@@ -544,6 +544,7 @@ std::vector<std::string> ClassLoader<T>::getAllLibraryPathsToTry(
         auto full_path = rcpputils::path_for_library(current_search_path, current_library_path);
         if (!full_path.empty()) {
           all_paths.push_back(full_path);
+          printf("pluginlib.ClassLoader: Full library path: %s\n", full_path.c_str());
           return all_paths;
         }
       }
@@ -594,28 +595,28 @@ std::string ClassLoader<T>::getClassLibraryPath(const std::string & lookup_name)
 /***************************************************************************/
 {
   if (classes_available_.find(lookup_name) == classes_available_.end()) {
-    RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-      "Class %s has no mapping in classes_available_.",
+    printf("pluginlib.ClassLoader: "
+      "Class %s has no mapping in classes_available_.\n",
       lookup_name.c_str());
     return "";
   }
   ClassMapIterator it = classes_available_.find(lookup_name);
   std::string library_name = it->second.library_name_;
 
-  RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-    "Class %s maps to library %s in classes_available_.",
+  printf("pluginlib.ClassLoader: "
+    "Class %s maps to library %s in classes_available_.\n",
     lookup_name.c_str(), library_name.c_str());
 
   std::vector<std::string> paths_to_try =
     getAllLibraryPathsToTry(library_name, it->second.package_);
 
-  RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-    "Iterating through all possible paths where %s could be located...",
+  printf("pluginlib.ClassLoader: "
+    "Iterating through all possible paths where %s could be located...\n",
     library_name.c_str());
   for (auto it = paths_to_try.begin(); it != paths_to_try.end(); it++) {
     RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader", "Checking path %s ", it->c_str());
     if (rcpputils::fs::exists(*it)) {
-      RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader", "Library %s found at explicit path %s.",
+      printf("pluginlib.ClassLoader: " "Library %s found at explicit path %s.\n",
         library_name.c_str(), it->c_str());
       return *it;
     }
@@ -761,16 +762,16 @@ void ClassLoader<T>::loadLibraryForClass(const std::string & lookup_name)
 {
   ClassMapIterator it = classes_available_.find(lookup_name);
   if (it == classes_available_.end()) {
-    RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-      "Class %s has no mapping in classes_available_.",
+    printf("pluginlib.ClassLoader: "
+      "Class %s has no mapping in classes_available_.\n",
       lookup_name.c_str());
     throw pluginlib::LibraryLoadException(getErrorStringForUnknownClass(lookup_name));
   }
 
   std::string library_path = getClassLibraryPath(lookup_name);
   if ("" == library_path) {
-    RCUTILS_LOG_DEBUG_NAMED("pluginlib.ClassLoader",
-      "No path could be found to the library containing %s.",
+    printf("pluginlib.ClassLoader: "
+      "No path could be found to the library containing %s.\n",
       lookup_name.c_str());
     std::ostringstream error_msg;
     error_msg << "Could not find library corresponding to plugin " << lookup_name <<
